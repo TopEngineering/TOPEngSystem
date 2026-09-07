@@ -4,11 +4,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '@/utils/db';
 import { useLanguage } from '@/context/LanguageContext';
 import { getSwal } from '@/utils/swal';
-import { matchesRequiredPrefix, matchesAllowedExtensions, parseAllowedExtensions } from '@/utils/filePrefixMatch';
+import { matchesRequiredPrefix, matchesAllowedExtensions, parseAllowedExtensions, UPLOAD_ACCEPT_EXT } from '@/utils/filePrefixMatch';
 
 // Kept in sync with DocumentExplorer.js's ACCEPT_EXT (duplicated rather than
 // imported to avoid a circular import between the two sibling components).
-const ACCEPT_EXT = '.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.csv,.png,.jpg,.jpeg,.zip,.rar,.dwg,.zw1';
+const ACCEPT_EXT = UPLOAD_ACCEPT_EXT;
 
 // Fixed-row file manager for folders tagged folder_type === 'file_slot_table'
 // (e.g. the auto-provisioned "01.TK Điện" folder): each predefined row only

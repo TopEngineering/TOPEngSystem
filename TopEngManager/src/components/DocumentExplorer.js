@@ -8,7 +8,7 @@ import { getSwal } from '@/utils/swal';
 import TextDocumentEditor from '@/components/TextDocumentEditor';
 import FilePreviewModal, { PREVIEWABLE_EXTENSIONS } from '@/components/FilePreviewModal';
 import DocumentFileSlotTable from '@/components/DocumentFileSlotTable';
-import { matchesRequiredPrefix, matchesAllowedExtensions, parseAllowedExtensions } from '@/utils/filePrefixMatch';
+import { matchesRequiredPrefix, matchesAllowedExtensions, parseAllowedExtensions, UPLOAD_ACCEPT_EXT } from '@/utils/filePrefixMatch';
 
 const FILE_ICONS = {
   pdf: 'fa-file-pdf',
@@ -27,9 +27,10 @@ const FILE_ICONS = {
   txt: 'fa-file-lines',
   html: 'fa-file-lines',
   dwg: 'fa-file-pen',
-  zw1: 'fa-file-pen'
+  zw1: 'fa-file-pen',
+  drawio: 'fa-diagram-project'
 };
-const ACCEPT_EXT = '.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.csv,.png,.jpg,.jpeg,.zip,.rar,.dwg,.zw1';
+const ACCEPT_EXT = UPLOAD_ACCEPT_EXT;
 
 function formatFileSize(bytes) {
   if (bytes === null || bytes === undefined) return '';

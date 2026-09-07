@@ -1028,7 +1028,9 @@ export const translations = {
     "customer.deleteTitle": "Xóa khách hàng",
     "customer.deleteBlockedHint": "Vui lòng xóa hoặc chuyển các dự án này sang khách hàng khác trước, rồi quay lại xóa khách hàng.",
     "customer.deleteBlockedText": "Khách hàng \"{name}\" đã liên kết với {count} dự án nên không thể xóa:",
-    "customer.deleteBlockedTitle": "Không thể xóa khách hàng"
+    "customer.deleteBlockedTitle": "Không thể xóa khách hàng",
+    "report.historyMonthLabel": "Tháng {month}/{year}",
+    "report.historyRecordUnit": "bản ghi"
   },
   "en": {
     "sidebar.roomBooking": "Meeting Rooms",
@@ -2051,7 +2053,9 @@ export const translations = {
     "customer.deleteTitle": "Delete customer",
     "customer.deleteBlockedHint": "Please delete these projects or move them to another customer first, then delete the customer.",
     "customer.deleteBlockedText": "The customer \"{name}\" is linked to {count} project(s) and cannot be deleted:",
-    "customer.deleteBlockedTitle": "Cannot delete this customer"
+    "customer.deleteBlockedTitle": "Cannot delete this customer",
+    "report.historyMonthLabel": "{month}/{year}",
+    "report.historyRecordUnit": "records"
   },
   "ko": {
     "sidebar.roomBooking": "회의실 예약",
@@ -3074,7 +3078,9 @@ export const translations = {
     "customer.deleteTitle": "고객 삭제",
     "customer.deleteBlockedHint": "먼저 해당 프로젝트를 삭제하거나 다른 고객으로 옮긴 뒤 고객을 삭제하세요.",
     "customer.deleteBlockedText": "고객 \"{name}\"은(는) {count}개의 프로젝트와 연결되어 있어 삭제할 수 없습니다:",
-    "customer.deleteBlockedTitle": "고객을 삭제할 수 없습니다"
+    "customer.deleteBlockedTitle": "고객을 삭제할 수 없습니다",
+    "report.historyMonthLabel": "{year}년 {month}월",
+    "report.historyRecordUnit": "건"
   },
   "zh": {
     "sidebar.roomBooking": "会议室预订",
@@ -4097,7 +4103,9 @@ export const translations = {
     "customer.deleteTitle": "删除客户",
     "customer.deleteBlockedHint": "请先删除这些项目或将其转移至其他客户，然后再删除该客户。",
     "customer.deleteBlockedText": "客户 \"{name}\" 已关联 {count} 个项目，无法删除：",
-    "customer.deleteBlockedTitle": "无法删除该客户"
+    "customer.deleteBlockedTitle": "无法删除该客户",
+    "report.historyMonthLabel": "{year} 年 {month} 月",
+    "report.historyRecordUnit": "条记录"
   },
   "ja": {
     "sidebar.roomBooking": "会議室予約",
@@ -5120,6 +5128,8 @@ export const translations = {
     "customer.deleteTitle": "顧客を削除",
     "customer.deleteBlockedHint": "これらのプロジェクトを削除するか別の顧客に移してから、顧客を削除してください。",
     "customer.deleteBlockedText": "顧客「{name}」は {count} 件のプロジェクトに紐付いているため削除できません:",
-    "customer.deleteBlockedTitle": "この顧客は削除できません"
+    "customer.deleteBlockedTitle": "この顧客は削除できません",
+    "report.historyMonthLabel": "{year}年{month}月",
+    "report.historyRecordUnit": "件"
   }
 };

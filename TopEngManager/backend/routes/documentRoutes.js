@@ -11,7 +11,9 @@ if (!fs.existsSync(documentsUploadDir)) {
   fs.mkdirSync(documentsUploadDir, { recursive: true });
 }
 
-const ALLOWED_EXTENSIONS = ['txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'csv', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'dwg', 'zw1'];
+// The gate that actually enforces what can be uploaded. Must stay in step with
+// UPLOAD_EXTENSIONS in src/utils/filePrefixMatch.js, which drives the file picker.
+const ALLOWED_EXTENSIONS = ['txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'csv', 'png', 'jpg', 'jpeg', 'zip', 'rar', 'dwg', 'zw1', 'drawio'];
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
