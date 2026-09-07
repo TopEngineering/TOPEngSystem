@@ -19,11 +19,25 @@ const stripTimeLabels = (value) => String(value ?? '').replace(TIME_LABEL_RE, ''
 // each contributor's report is merged in ONCE, and their id is remembered in detailSeen.
 // That is what lets a member reporting later append on the next line without disturbing
 // whatever a leader has already edited above.
+// A report block is compared as a whole chunk, anchored at line boundaries, because the
+// text a member writes routinely spans several lines (a heading plus bullet points). Line
+// by line matching missed those and put the same block in twice.
+const NLX = String.fromCharCode(10);
+const containsChunk = (haystack, chunk) => (
+  `${NLX}${haystack}${NLX}`.includes(`${NLX}${chunk}${NLX}`)
+);
+const removeChunk = (haystack, chunk) => {
+  const target = `${NLX}${chunk}${NLX}`;
+  const padded = `${NLX}${haystack}${NLX}`;
+  if (!padded.includes(target)) return haystack;
+  return padded.split(target).join(NLX).replace(/^\n+|\n+$/g, '');
+};
+
 const mergeReportedDetails = (rows, details) => {
   const merged = { ...rows };
   Object.entries(details || {}).forEach(([projectId, entries]) => {
     const row = merged[projectId] || { values: {}, detail: '' };
-    // detailSeen holds one key per report card, so a time block added later is recognised
+    // detailSeen holds one key per report block, so a time block added later is recognised
     // as new. It used to hold plain user ids, which is why a second block never appeared:
     // the person was already "seen" from their first one.
     const seen = new Set(row.detailSeen || []);
@@ -31,73 +45,51 @@ const mergeReportedDetails = (rows, details) => {
     // Edits used to be stored per line; fold any of those in so nothing already written is
     // lost when an older board is opened.
     const legacyEdits = Object.values(row.detailEdits || {})
-      .map(text => stripTimeLabels(text))
+      .map(value => stripTimeLabels(value))
       .filter(Boolean);
 
-    const existing = stripTimeLabels(row.detail);
     // A board saved by the previous version glued all of one person's blocks into a single
-    // line with spaces. Those exact lines are dropped so the blocks can stand on their own
-    // instead of showing twice. Exact match only: a line a leader edited never matches.
-    const gluedByReport = new Map();
-    const gluedByUser = new Map();
+    // run separated by spaces. Those exact runs are removed so the blocks can stand on
+    // their own instead of showing twice. Exact match only: text a leader changed is kept.
+    const byReport = new Map();
+    const byUser = new Map();
     entries.forEach(entry => {
-      const text = stripTimeLabels(entry.content);
-      if (!text) return;
+      const value = stripTimeLabels(entry.content);
+      if (!value) return;
       const reportId = String(entry.key || '').split(':')[0];
-      [[gluedByReport, reportId], [gluedByUser, entry.userId]].forEach(([map, id]) => {
+      [[byReport, reportId], [byUser, entry.userId]].forEach(([map, id]) => {
         if (!map.has(id)) map.set(id, []);
-        map.get(id).push(text);
+        map.get(id).push(value);
       });
     });
-    const legacyGlued = new Set(
-      [...gluedByReport.values(), ...gluedByUser.values()]
-        .filter(parts => parts.length > 1)
-        .map(parts => parts.join(' ').trim())
-    );
-    const keptLines = existing
-      .split('\n')
-      .filter(line => !legacyGlued.has(line.trim()));
-    // Whatever the cell already shows, line by line. Content already visible is never
-    // added again - that is what repairs rows whose detailSeen was keyed by user, without
-    // duplicating the block that did get merged.
-    const presentLines = new Set(
-      [...keptLines, ...legacyEdits]
-        .join('\n')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-    );
+    const glued = [...byReport.values(), ...byUser.values()]
+      .filter(parts => parts.length > 1)
+      .map(parts => parts.join(' ').trim());
 
-    const fresh = [];
+    let kept = stripTimeLabels(row.detail);
+    glued.forEach(run => { kept = removeChunk(kept, run); });
+
+    let text = [kept, ...legacyEdits].filter(Boolean).join(NLX);
     entries.forEach(entry => {
-      const text = stripTimeLabels(entry.content);
-      if (!text) return;
-      const key = entry.key || `${entry.userId}:${text}`;
-      if (seen.has(key) || presentLines.has(text)) return;
-      fresh.push(text);
-      presentLines.add(text);
+      const value = stripTimeLabels(entry.content);
+      if (!value) return;
+      const key = entry.key || `${entry.userId}:${value}`;
+      // Already taken in, or already visible in the cell: either way it is not added
+      // again. The second test is what repairs a board whose detailSeen was keyed by user.
+      if (seen.has(key) || containsChunk(text, value)) return;
+      text = text ? `${text}${NLX}${value}` : value;
     });
 
-    // Every card is recorded as seen, whether it was appended just now or was already in
-    // the text, so nothing gets merged twice on the next load.
+    // Every block is recorded, whether it was appended just now or was already in the
+    // text, so nothing gets merged twice on the next load.
     const nextSeen = new Set(seen);
     entries.forEach(entry => {
-      const text = stripTimeLabels(entry.content);
-      if (!text) return;   // an empty card stays unrecorded, so filling it in later works
-      nextSeen.add(entry.key || `${entry.userId}:${text}`);
+      const value = stripTimeLabels(entry.content);
+      if (!value) return;   // an empty block stays unrecorded, so filling it in later works
+      nextSeen.add(entry.key || `${entry.userId}:${value}`);
     });
 
-    if (legacyEdits.length === 0 && fresh.length === 0) {
-      merged[projectId] = { ...row, detail: keptLines.filter(Boolean).join('\n'),
-        detailSeen: [...nextSeen], detailEdits: undefined };
-      return;
-    }
-    merged[projectId] = {
-      ...row,
-      detail: [...keptLines, ...legacyEdits, ...fresh].filter(Boolean).join('\n'),
-      detailSeen: [...nextSeen],
-      detailEdits: undefined
-    };
+    merged[projectId] = { ...row, detail: text, detailSeen: [...nextSeen], detailEdits: undefined };
   });
   // A project nobody reported on keeps whatever text it already had.
   return merged;
