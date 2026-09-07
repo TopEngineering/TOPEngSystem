@@ -550,32 +550,24 @@ exports.getManpowerProjectDetails = async (req, res, next) => {
       const user = byId.get(report.user_id);
       if (excluded.size > 0 && user && excluded.has(user.department_id)) continue;
 
-      // All of this person's cards for one project collapse into a single line, keeping the
-      // time block so two entries on the same project stay distinguishable.
-      const perProject = new Map();
-      for (const card of parseCards(report.content)) {
-        if (!card || !card.projectId || !allowedProjects.has(card.projectId)) continue;
+      // One entry per card, NOT one per person. Each carries a stable key so the board can
+      // tell a brand-new time block apart from one it has already taken in: joining a
+      // person's cards into a single entry meant a block added later never got merged.
+      const cards = parseCards(report.content);
+      cards.forEach((card, index) => {
+        if (!card || !card.projectId || !allowedProjects.has(card.projectId)) return;
         const text = String(card.content || '').trim();
-        if (!text) continue;
-        // Just the text: the cell shows report content only, no time block, no name.
-        const list = perProject.get(card.projectId) || [];
-        list.push(text);
-        perProject.set(card.projectId, list);
-      }
-
-      for (const [projectId, parts] of perProject.entries()) {
-        if (!details[projectId]) details[projectId] = [];
-        const existing = details[projectId].find(entry => entry.userId === report.user_id);
-        if (existing) {
-          existing.content = `${existing.content} ${parts.join(' ')}`.trim();
-        } else {
-          details[projectId].push({
-            userId: report.user_id,
-            userName: (user && user.full_name) || report.user_id,
-            content: parts.join(' ')
-          });
-        }
-      }
+        if (!text) return;
+        if (!details[card.projectId]) details[card.projectId] = [];
+        details[card.projectId].push({
+          // report id + card id: unique per block, and stable across reloads
+          key: `${report.id}:${card.id || index}`,
+          userId: report.user_id,
+          userName: (user && user.full_name) || report.user_id,
+          // Just the text: the cell shows report content only, no time block, no name.
+          content: text
+        });
+      });
     }
 
     res.json(details);

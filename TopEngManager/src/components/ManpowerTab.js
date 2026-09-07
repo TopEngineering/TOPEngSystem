@@ -23,29 +23,79 @@ const mergeReportedDetails = (rows, details) => {
   const merged = { ...rows };
   Object.entries(details || {}).forEach(([projectId, entries]) => {
     const row = merged[projectId] || { values: {}, detail: '' };
+    // detailSeen holds one key per report card, so a time block added later is recognised
+    // as new. It used to hold plain user ids, which is why a second block never appeared:
+    // the person was already "seen" from their first one.
     const seen = new Set(row.detailSeen || []);
-    // Edits used to be stored per line; fold any of those into the text so nothing
-    // written before this change is lost.
-    const legacyEditEntries = Object.entries(row.detailEdits || {})
-      .map(([userId, text]) => [userId, stripTimeLabels(text)])
-      .filter(([, text]) => text);
-    const legacyEdits = legacyEditEntries.map(([, text]) => text);
-    // Somebody whose line was already edited has effectively been merged: counting them
-    // as fresh too would put their text in twice.
-    const alreadyIn = new Set([...seen, ...legacyEditEntries.map(([userId]) => userId)]);
-    const fresh = entries
-      .filter(entry => !alreadyIn.has(entry.userId))
-      .map(entry => stripTimeLabels(entry.content))
+
+    // Edits used to be stored per line; fold any of those in so nothing already written is
+    // lost when an older board is opened.
+    const legacyEdits = Object.values(row.detailEdits || {})
+      .map(text => stripTimeLabels(text))
       .filter(Boolean);
+
+    const existing = stripTimeLabels(row.detail);
+    // A board saved by the previous version glued all of one person's blocks into a single
+    // line with spaces. Those exact lines are dropped so the blocks can stand on their own
+    // instead of showing twice. Exact match only: a line a leader edited never matches.
+    const gluedByReport = new Map();
+    const gluedByUser = new Map();
+    entries.forEach(entry => {
+      const text = stripTimeLabels(entry.content);
+      if (!text) return;
+      const reportId = String(entry.key || '').split(':')[0];
+      [[gluedByReport, reportId], [gluedByUser, entry.userId]].forEach(([map, id]) => {
+        if (!map.has(id)) map.set(id, []);
+        map.get(id).push(text);
+      });
+    });
+    const legacyGlued = new Set(
+      [...gluedByReport.values(), ...gluedByUser.values()]
+        .filter(parts => parts.length > 1)
+        .map(parts => parts.join(' ').trim())
+    );
+    const keptLines = existing
+      .split('\n')
+      .filter(line => !legacyGlued.has(line.trim()));
+    // Whatever the cell already shows, line by line. Content already visible is never
+    // added again - that is what repairs rows whose detailSeen was keyed by user, without
+    // duplicating the block that did get merged.
+    const presentLines = new Set(
+      [...keptLines, ...legacyEdits]
+        .join('\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+    );
+
+    const fresh = [];
+    entries.forEach(entry => {
+      const text = stripTimeLabels(entry.content);
+      if (!text) return;
+      const key = entry.key || `${entry.userId}:${text}`;
+      if (seen.has(key) || presentLines.has(text)) return;
+      fresh.push(text);
+      presentLines.add(text);
+    });
+
+    // Every card is recorded as seen, whether it was appended just now or was already in
+    // the text, so nothing gets merged twice on the next load.
+    const nextSeen = new Set(seen);
+    entries.forEach(entry => {
+      const text = stripTimeLabels(entry.content);
+      if (!text) return;   // an empty card stays unrecorded, so filling it in later works
+      nextSeen.add(entry.key || `${entry.userId}:${text}`);
+    });
+
     if (legacyEdits.length === 0 && fresh.length === 0) {
-      merged[projectId] = { ...row, detailSeen: [...seen] };
+      merged[projectId] = { ...row, detail: keptLines.filter(Boolean).join('\n'),
+        detailSeen: [...nextSeen], detailEdits: undefined };
       return;
     }
-    const existing = stripTimeLabels(row.detail);
     merged[projectId] = {
       ...row,
-      detail: [existing, ...legacyEdits, ...fresh].filter(Boolean).join('\n'),
-        detailSeen: [...new Set([...alreadyIn, ...entries.map(e => e.userId)])],
+      detail: [...keptLines, ...legacyEdits, ...fresh].filter(Boolean).join('\n'),
+      detailSeen: [...nextSeen],
       detailEdits: undefined
     };
   });
