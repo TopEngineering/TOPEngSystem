@@ -1031,6 +1031,8 @@ export const translations = {
     "customer.deleteBlockedTitle": "Không thể xóa khách hàng",
     "report.historyMonthLabel": "Tháng {month}/{year}",
     "report.historyRecordUnit": "bản ghi",
+    "manpower.detailEditorPlaceholder": "Mỗi nội dung một dòng...",
+    "manpower.openDetail": "Mở nội dung"
   },
   "en": {
     "sidebar.roomBooking": "Meeting Rooms",
@@ -2056,6 +2058,8 @@ export const translations = {
     "customer.deleteBlockedTitle": "Cannot delete this customer",
     "report.historyMonthLabel": "{month}/{year}",
     "report.historyRecordUnit": "records",
+    "manpower.detailEditorPlaceholder": "One entry per line...",
+    "manpower.openDetail": "Open content"
   },
   "ko": {
     "sidebar.roomBooking": "회의실 예약",
@@ -3081,6 +3085,8 @@ export const translations = {
     "customer.deleteBlockedTitle": "고객을 삭제할 수 없습니다",
     "report.historyMonthLabel": "{year}년 {month}월",
     "report.historyRecordUnit": "건",
+    "manpower.detailEditorPlaceholder": "한 줄에 하나씩 입력...",
+    "manpower.openDetail": "내용 열기"
   },
   "zh": {
     "sidebar.roomBooking": "会议室预订",
@@ -4106,6 +4112,8 @@ export const translations = {
     "customer.deleteBlockedTitle": "无法删除该客户",
     "report.historyMonthLabel": "{year} 年 {month} 月",
     "report.historyRecordUnit": "条记录",
+    "manpower.detailEditorPlaceholder": "每行一条内容…",
+    "manpower.openDetail": "打开内容"
   },
   "ja": {
     "sidebar.roomBooking": "会議室予約",
@@ -5131,5 +5139,7 @@ export const translations = {
     "customer.deleteBlockedTitle": "この顧客は削除できません",
     "report.historyMonthLabel": "{year}年{month}月",
     "report.historyRecordUnit": "件",
+    "manpower.detailEditorPlaceholder": "1行に1件…",
+    "manpower.openDetail": "内容を開く"
   }
 };

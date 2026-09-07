@@ -1516,6 +1516,23 @@ export default function ManpowerTab({ currentUser }) {
 
   // The rows that would be written for the current view. Un-ticked Parts are hidden from
   // the view, not deleted, so their previously saved rows are carried through untouched.
+  // Which row's detail text is open in the big editor, and the draft being typed there.
+  // The draft is kept separate so Cancel really discards, rather than having already
+  // written through to the board.
+  const [detailEditor, setDetailEditor] = useState(null);
+  const [detailDraft, setDetailDraft] = useState('');
+
+  const openDetailEditor = (project) => {
+    setDetailDraft(cells[project.manpower_project_id]?.detail || '');
+    setDetailEditor({ projectId: project.manpower_project_id, projectName: project.name });
+  };
+
+  const saveDetailEditor = () => {
+    if (!detailEditor) return;
+    updateDetail(detailEditor.projectId, detailDraft);
+    setDetailEditor(null);
+  };
+
   const buildBoardRows = () => {
     const rows = visibleProjects.map(p => {
       const row = cells[p.manpower_project_id] || {};
@@ -1886,25 +1903,42 @@ export default function ManpowerTab({ currentUser }) {
                             backgroundColor: isCellSelected(rowIndex, detailColIndex) ? 'rgba(59, 130, 246, 0.22)' : undefined
                           }}
                         >
-                          {/* One plain text box per row. Report content is merged in with a
-                              newline between entries; a leader edits the whole thing freely. */}
-                          <textarea
-                            data-mp-detail="1"
-                            rows={2}
-                            value={cells[p.manpower_project_id]?.detail || ''}
-                            readOnly={!canEditDetails}
-                            onChange={(e) => updateDetail(p.manpower_project_id, e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, rowIndex, detailColIndex)}
-                            disabled={isLoadingBoard}
-                            style={{
-                              ...cellInputStyle,
-                              textAlign: 'left',
-                              resize: 'vertical',
-                              minHeight: '42px',
-                              lineHeight: 1.45,
-                              fontFamily: 'inherit'
-                            }}
-                          />
+                          {/* One plain text box per row, plus a button that opens the same
+                              text in a roomy popup - the cell is too short for long content. */}
+                          <div style={{ display: 'flex', alignItems: 'stretch', gap: '4px' }}>
+                            <textarea
+                              data-mp-detail="1"
+                              rows={2}
+                              value={cells[p.manpower_project_id]?.detail || ''}
+                              readOnly={!canEditDetails}
+                              onChange={(e) => updateDetail(p.manpower_project_id, e.target.value)}
+                              onKeyDown={(e) => handleCellKeyDown(e, rowIndex, detailColIndex)}
+                              disabled={isLoadingBoard}
+                              style={{
+                                ...cellInputStyle,
+                                flex: 1,
+                                textAlign: 'left',
+                                resize: 'vertical',
+                                minHeight: '42px',
+                                lineHeight: 1.45,
+                                fontFamily: 'inherit'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              title={t('manpower.openDetail', 'Mở nội dung')}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={() => openDetailEditor(p)}
+                              disabled={isLoadingBoard}
+                              style={{
+                                flexShrink: 0, width: '30px', border: '1px solid var(--neutral-border)',
+                                borderRadius: '4px', backgroundColor: 'var(--neutral-bg-card)',
+                                color: 'var(--primary-color)', cursor: 'pointer', fontSize: '12px'
+                              }}
+                            >
+                              <i className="fa-solid fa-up-right-and-down-left-from-center"></i>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       );
@@ -1977,6 +2011,57 @@ export default function ManpowerTab({ currentUser }) {
         currentUser={currentUser}
         excludedPartIds={excludedPartIds}
       />
+
+      {/* The detail text of one row, in a window big enough to actually read it. Editing
+          here is the same edit as in the cell; Cancel discards the draft. */}
+      {detailEditor && (
+        <div className="modal show" style={{ display: 'flex', zIndex: 1002 }}>
+          <div className="modal-dialog" style={{ maxWidth: '860px', width: '90%' }}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="fa-solid fa-list-check" style={{ color: 'var(--primary-color)' }}></i>
+                  {t('manpower.detailColumn', 'Chi tiết công việc của dự án')}
+                  <span style={{ color: 'var(--neutral-muted)', fontWeight: 500, fontSize: '14px' }}>
+                    — {detailEditor.projectName}
+                  </span>
+                </h3>
+                <button className="btn-close-modal" onClick={() => setDetailEditor(null)}>
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <div className="modal-body" style={{ padding: '20px' }}>
+                <textarea
+                  value={detailDraft}
+                  readOnly={!canEditDetails}
+                  onChange={(e) => setDetailDraft(e.target.value)}
+                  placeholder={canEditDetails
+                    ? t('manpower.detailEditorPlaceholder', 'Mỗi nội dung một dòng...')
+                    : ''}
+                  style={{
+                    width: '100%', minHeight: '340px', padding: '12px 14px', borderRadius: '6px',
+                    border: '1px solid var(--neutral-border)', backgroundColor: 'var(--neutral-bg-main)',
+                    color: 'var(--neutral-dark)', fontSize: '13.5px', lineHeight: 1.6,
+                    fontFamily: 'inherit', resize: 'vertical', outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--neutral-border)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setDetailEditor(null)}>
+                  {canEditDetails ? t('common.cancel', 'Hủy') : t('common.close', 'Đóng')}
+                </button>
+                {canEditDetails && (
+                  <button type="button" className="btn btn-primary" onClick={saveDetailEditor}>
+                    {t('common.save', 'Lưu')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ManpowerInfoModal
         isOpen={isInfoModalOpen}
