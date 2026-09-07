@@ -338,6 +338,10 @@ export const MySQLAdapter = {
     return await callApi('getManpowerHeadcount', { reportDate, departmentIds, excludedDepartmentIds });
   },
 
+  getManpowerProjectDetails: async function(reportDate, departmentIds, excludedDepartmentIds) {
+    return await callApi('getManpowerProjectDetails', { reportDate, departmentIds, excludedDepartmentIds });
+  },
+
   getManpowerCellMembers: async function(reportDate, manpowerProjectId, manpowerLocationId, excludedDepartmentIds) {
     return await callApi('getManpowerCellMembers', { reportDate, manpowerProjectId, manpowerLocationId, excludedDepartmentIds });
   },

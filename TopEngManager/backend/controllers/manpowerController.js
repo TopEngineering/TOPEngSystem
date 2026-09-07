@@ -502,6 +502,88 @@ exports.getManpowerHeadcount = async (req, res, next) => {
   }
 };
 
+// The daily-report text behind each project row, for the "Chi tiết công việc của dự án"
+// column. One entry per contributor, ordered by when they filed, so somebody reporting
+// later lands on the next line.
+//
+// Unlike the headcount - which counts a person once, from their last time block - this
+// keeps EVERY card that names the project: two time blocks on the same project are two
+// pieces of work, and dropping one would lose real content. A member reporting on several
+// projects only contributes to the project each card actually names.
+exports.getManpowerProjectDetails = async (req, res, next) => {
+  try {
+    const { reportDate, departmentIds, excludedDepartmentIds } = req.body || {};
+    if (!isValidReportDate(reportDate)) {
+      return res.status(400).json({ error: 'Ngày báo cáo không hợp lệ (định dạng YYYY-MM-DD).' });
+    }
+
+    const scopedProjects = Array.isArray(departmentIds)
+      ? await prisma.manpowerproject.findMany({
+        where: { department_id: { in: departmentIds } },
+        select: { manpower_project_id: true }
+      })
+      : await prisma.manpowerproject.findMany({ select: { manpower_project_id: true } });
+    const allowedProjects = new Set(scopedProjects.map(p => p.manpower_project_id));
+
+    const reports = await fetchDayReports(reportDate);
+    // Oldest first: the order the lines appear in the cell.
+    const ordered = [...reports].sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      if (ta !== tb) return ta - tb;
+      return (a.id || 0) - (b.id || 0);
+    });
+
+    const excluded = new Set((excludedDepartmentIds || []).filter(Boolean));
+    const userIds = [...new Set(ordered.map(r => r.user_id))];
+    const users = userIds.length > 0
+      ? await prisma.user.findMany({
+        where: { user_id: { in: userIds } },
+        select: { user_id: true, full_name: true, department_id: true }
+      })
+      : [];
+    const byId = new Map(users.map(u => [u.user_id, u]));
+
+    // { [projectId]: [{ userId, userName, content }] }
+    const details = {};
+    for (const report of ordered) {
+      const user = byId.get(report.user_id);
+      if (excluded.size > 0 && user && excluded.has(user.department_id)) continue;
+
+      // All of this person's cards for one project collapse into a single line, keeping the
+      // time block so two entries on the same project stay distinguishable.
+      const perProject = new Map();
+      for (const card of parseCards(report.content)) {
+        if (!card || !card.projectId || !allowedProjects.has(card.projectId)) continue;
+        const text = String(card.content || '').trim();
+        if (!text) continue;
+        // Just the text: the cell shows report content only, no time block, no name.
+        const list = perProject.get(card.projectId) || [];
+        list.push(text);
+        perProject.set(card.projectId, list);
+      }
+
+      for (const [projectId, parts] of perProject.entries()) {
+        if (!details[projectId]) details[projectId] = [];
+        const existing = details[projectId].find(entry => entry.userId === report.user_id);
+        if (existing) {
+          existing.content = `${existing.content} ${parts.join(' ')}`.trim();
+        } else {
+          details[projectId].push({
+            userId: report.user_id,
+            userName: (user && user.full_name) || report.user_id,
+            content: parts.join(' ')
+          });
+        }
+      }
+    }
+
+    res.json(details);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // The people making up one cell's number, for the cell detail popup.
 exports.getManpowerCellMembers = async (req, res, next) => {
   try {

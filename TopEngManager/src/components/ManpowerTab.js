@@ -8,6 +8,51 @@ import { getSwal } from '@/utils/swal';
 import { getAllowedScopes, getScopeDepartmentIds, getOwningTeamId, toApiScope, UNSCOPED_SCOPE_ID } from '@/utils/orgScope';
 import { toTsv, parseTsv } from '@/utils/tsvGrid';
 
+// The cell used to prefix each line with its time block. A leader editing such a line
+// saved the prefix along with their text, so stored edits still carry it. Strip it on read:
+// the label is never wanted now, and this cleans old rows without rewriting any file.
+const TIME_LABEL_RE = /\[\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*\]\s*/g;
+const stripTimeLabels = (value) => String(value ?? '').replace(TIME_LABEL_RE, '').trim();
+
+// The cell is one plain text box, lines separated by newlines. Because the text is a
+// single blob, there is no way to tell afterwards which characters came from whom - so
+// each contributor's report is merged in ONCE, and their id is remembered in detailSeen.
+// That is what lets a member reporting later append on the next line without disturbing
+// whatever a leader has already edited above.
+const mergeReportedDetails = (rows, details) => {
+  const merged = { ...rows };
+  Object.entries(details || {}).forEach(([projectId, entries]) => {
+    const row = merged[projectId] || { values: {}, detail: '' };
+    const seen = new Set(row.detailSeen || []);
+    // Edits used to be stored per line; fold any of those into the text so nothing
+    // written before this change is lost.
+    const legacyEditEntries = Object.entries(row.detailEdits || {})
+      .map(([userId, text]) => [userId, stripTimeLabels(text)])
+      .filter(([, text]) => text);
+    const legacyEdits = legacyEditEntries.map(([, text]) => text);
+    // Somebody whose line was already edited has effectively been merged: counting them
+    // as fresh too would put their text in twice.
+    const alreadyIn = new Set([...seen, ...legacyEditEntries.map(([userId]) => userId)]);
+    const fresh = entries
+      .filter(entry => !alreadyIn.has(entry.userId))
+      .map(entry => stripTimeLabels(entry.content))
+      .filter(Boolean);
+    if (legacyEdits.length === 0 && fresh.length === 0) {
+      merged[projectId] = { ...row, detailSeen: [...seen] };
+      return;
+    }
+    const existing = stripTimeLabels(row.detail);
+    merged[projectId] = {
+      ...row,
+      detail: [existing, ...legacyEdits, ...fresh].filter(Boolean).join('\n'),
+        detailSeen: [...new Set([...alreadyIn, ...entries.map(e => e.userId)])],
+      detailEdits: undefined
+    };
+  });
+  // A project nobody reported on keeps whatever text it already had.
+  return merged;
+};
+
 const getTodayDateString = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1040,6 +1085,12 @@ export default function ManpowerTab({ currentUser }) {
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   // { [manpower_project_id]: { values: { [manpower_location_id]: string }, detail: string } }
   const [cells, setCells] = useState({});
+
+  // The daily-report text behind each project row: { [projectId]: [{ userId, userName, content }] },
+  // ordered by who filed first. Recomputed on every load, never stored, so a member who
+  // reports later always shows up on the next line - including after a leader has edited
+  // the lines above.
+  const [projectDetails, setProjectDetails] = useState({});
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingBoard, setIsLoadingBoard] = useState(false);
@@ -1162,9 +1213,10 @@ export default function ManpowerTab({ currentUser }) {
     }
     setIsLoadingBoard(true);
     try {
-      const [res, headcount] = await Promise.all([
+      const [res, headcount, details] = await Promise.all([
         db.getManpowerReport(dateStr, toApiScope(selectedScope)),
-        db.getManpowerHeadcount(dateStr, effectiveScopeIds, [...excludedPartIds]).catch(() => ({}))
+        db.getManpowerHeadcount(dateStr, effectiveScopeIds, [...excludedPartIds]).catch(() => ({})),
+        db.getManpowerProjectDetails(dateStr, effectiveScopeIds, [...excludedPartIds]).catch(() => ({}))
       ]);
       loadedRowsRef.current = res?.data?.rows || [];
       // Baseline for the auto-save comparison: what the stored file already contains.
@@ -1177,7 +1229,14 @@ export default function ManpowerTab({ currentUser }) {
       // file would leave a stale figure behind whenever a cell empties out (removing the
       // last member produces no headcount entry, so nothing would overwrite the old one).
       (res?.data?.rows || []).forEach(row => {
-        next[row.manpower_project_id] = { values: {}, detail: row.detail || '' };
+        next[row.manpower_project_id] = {
+          values: {},
+          detail: row.detail || '',
+          // detailSeen is whose report has already been folded into the text above.
+          detailSeen: Array.isArray(row.detailSeen) ? row.detailSeen : [],
+          // Carried only so a board saved by the previous per-line version can be migrated.
+          detailEdits: row.detailEdits || {}
+        };
       });
 
       // Anyone who filed a daily report for this day against a project + work location
@@ -1196,6 +1255,10 @@ export default function ManpowerTab({ currentUser }) {
         next[projectId] = { ...row, values };
       });
 
+      setProjectDetails(details || {});
+      // Fold any not-yet-merged report text into each row's cell before it is displayed.
+      // Auto-save then persists the merged text, so this happens once per contributor.
+      Object.assign(next, mergeReportedDetails(next, details));
       setAutoFilledCells(auto);
       setCellNames(names);
       // Derived from the same headcount the numbers come from, so it already respects the
@@ -1208,6 +1271,7 @@ export default function ManpowerTab({ currentUser }) {
     } catch (err) {
       console.error('Failed to load manpower board', err);
       loadedRowsRef.current = [];
+      setProjectDetails({});
       setAutoFilledCells({});
       setCellNames({});
       setOccupiedProjectIds(new Set());
@@ -1220,6 +1284,13 @@ export default function ManpowerTab({ currentUser }) {
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
   useEffect(() => { loadBoard(selectedDate); }, [selectedDate, loadBoard]);
+
+  // Only the roles that can open this tab may touch the text. Stated here rather than
+  // relying on the parent's tab gate alone.
+  const canEditDetails = (() => {
+    const role = currentUser?.system_role || '';
+    return role.includes('Admin') || role === 'Team Leader' || role === 'Part Leader';
+  })();
 
   const updateDetail = (projectId, value) => {
     setCells(prev => {
@@ -1446,12 +1517,18 @@ export default function ManpowerTab({ currentUser }) {
   // The rows that would be written for the current view. Un-ticked Parts are hidden from
   // the view, not deleted, so their previously saved rows are carried through untouched.
   const buildBoardRows = () => {
-    const rows = visibleProjects.map(p => ({
-      manpower_project_id: p.manpower_project_id,
-      project_name: p.name,
-      values: cells[p.manpower_project_id]?.values || {},
-      detail: cells[p.manpower_project_id]?.detail || ''
-    }));
+    const rows = visibleProjects.map(p => {
+      const row = cells[p.manpower_project_id] || {};
+      // The cell text IS the detail now, so the .html prints it as-is. detailSeen records
+      // whose report has already been folded in, so nobody is merged twice.
+      return {
+        manpower_project_id: p.manpower_project_id,
+        project_name: p.name,
+        values: row.values || {},
+        detail: row.detail || '',
+        detailSeen: row.detailSeen || []
+      };
+    });
     const visibleIds = new Set(visibleProjects.map(p => p.manpower_project_id));
     loadedRowsRef.current.forEach(savedRow => {
       if (!visibleIds.has(savedRow.manpower_project_id)) rows.push(savedRow);
@@ -1738,7 +1815,8 @@ export default function ManpowerTab({ currentUser }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleProjects.map((p, rowIndex) => (
+                    {visibleProjects.map((p, rowIndex) => {
+                      return (
                       <tr key={p.manpower_project_id}>
                         <td
                           onMouseDown={(e) => handleCellMouseDown(rowIndex, NAME_COL, e)}
@@ -1808,10 +1886,13 @@ export default function ManpowerTab({ currentUser }) {
                             backgroundColor: isCellSelected(rowIndex, detailColIndex) ? 'rgba(59, 130, 246, 0.22)' : undefined
                           }}
                         >
+                          {/* One plain text box per row. Report content is merged in with a
+                              newline between entries; a leader edits the whole thing freely. */}
                           <textarea
                             data-mp-detail="1"
                             rows={2}
                             value={cells[p.manpower_project_id]?.detail || ''}
+                            readOnly={!canEditDetails}
                             onChange={(e) => updateDetail(p.manpower_project_id, e.target.value)}
                             onKeyDown={(e) => handleCellKeyDown(e, rowIndex, detailColIndex)}
                             disabled={isLoadingBoard}
@@ -1826,7 +1907,8 @@ export default function ManpowerTab({ currentUser }) {
                           />
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
