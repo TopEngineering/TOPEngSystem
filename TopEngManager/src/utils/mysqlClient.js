@@ -148,6 +148,11 @@ export const MySQLAdapter = {
     return await callApi('getDocuments', { projectId, folderId, searchQuery });
   },
 
+  // Asked before any bytes are sent, so a batch the user cancels is never uploaded.
+  checkDocumentNameConflicts: async function({ folderId = null, projectId = null, fileNames = [] } = {}) {
+    return await callApi('checkDocumentNameConflicts', { folderId, projectId, fileNames });
+  },
+
   deleteDocument: async function(documentId) {
     return await callApi('deleteDocument', { documentId });
   },
@@ -162,7 +167,7 @@ export const MySQLAdapter = {
     return `${backendUrl}/downloadDocument/${documentId}?inline=1`;
   },
 
-  uploadDocuments: async function(files, { folderId, projectId, uploadedBy }) {
+  uploadDocuments: async function(files, { folderId, projectId, uploadedBy, replaceExisting = false }) {
     const formData = new FormData();
     for (const file of files) {
       formData.append('files', file);
@@ -170,6 +175,8 @@ export const MySQLAdapter = {
     if (folderId) formData.append('folderId', folderId);
     if (projectId) formData.append('projectId', projectId);
     if (uploadedBy) formData.append('uploadedBy', uploadedBy);
+    // Only sent when the user actually agreed; the server refuses a silent overwrite.
+    if (replaceExisting) formData.append('replaceExisting', 'true');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://127.0.0.1:5000/api';
     const res = await fetch(`${backendUrl}/uploadDocument`, {
       method: 'POST',
